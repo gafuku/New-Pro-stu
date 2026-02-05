@@ -1,0 +1,4 @@
+[00:00:01.018] Server  LOG     ✓ Ready in 733ms
+[00:01:39.918] Browser ERROR   unhandledRejection: FirebaseError: Firebase: Error (auth/configuration-not-found).
+[00:01:41.600] Browser ERROR   unhandledRejection: FirebaseError: Missing or insufficient permissions.
+[00:01:44.517] Browser ERROR   unhandledRejection: FirebaseError: Missing or insufficient permissions.
