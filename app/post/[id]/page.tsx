@@ -21,7 +21,7 @@ import {
   uploadBytes,
   getDownloadURL,
 } from "@/lib/firebase";
-import { Answer, Comment, Post } from "@/lib/types";
+import { Answer, Comment, Post, Attachment } from "@/lib/types";
 
 export default function PostPage() {
   const params = useParams<{ id: string }>();
