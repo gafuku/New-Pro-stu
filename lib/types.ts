@@ -15,7 +15,9 @@ export type Post = {
   status: PostStatus;
   resourceType: ResourceType;
   campus: string;
-  school: string;
+  university: string;
+  universitySlug?: string;
+  college: string;
   topic: string;
   gradeLevel: string;
   tags: string[];
@@ -35,4 +37,30 @@ export type Answer = {
   authorSchool?: string;
   createdAt?: any;
   updatedAt?: any;
+};
+
+export type Comment = {
+  id: string;
+  postId: string;
+  text: string;
+  status: PostStatus;
+  authorName?: string;
+  authorSchool?: string;
+  attachments?: Attachment[];
+  createdAt?: any;
+  updatedAt?: any;
+};
+
+export type University = {
+  id: string;
+  name: string;
+  slug?: string;
+  logoUrl?: string;
+  info?: string;
+  headerTitle?: string;
+  websiteUrl?: string;
+  locationLabel?: string;
+  latitude?: number;
+  longitude?: number;
+  colleges?: string[];
 };

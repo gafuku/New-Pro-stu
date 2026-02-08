@@ -1,12 +1,13 @@
-# UMich Q&A Hub (Next.js + Firestore)
+# University Q&A Hub (Next.js + Firestore)
 
-Public Q&A and resources for UMich prospects with admin-only moderation.
+Public Q&A and resources for high school prospects with admin-only moderation.
 
 ## Features
 - Public read + public submit (no login)
-- Admin-only approvals for posts and answers
-- Filters: campus, school, topic, grade level, tags, search
+- Admin-only approvals for posts, answers, and comments
+- Filters: campus, college, topic, grade level, tags, search
 - Attachments: PDF, image, or link
+- Admin-managed universities (name, slug, logo, header title, info, location, website, colleges)
 
 ## Setup
 1. **Create Firebase project**
@@ -37,15 +38,22 @@ Copy `storage.rules` into Firebase → Storage → Rules.
 
 ## Data Model
 ### posts
-- `title`, `body`, `status`, `resourceType`, `campus`, `school`, `topic`, `gradeLevel`, `tags[]`
+- `title`, `body`, `status`, `resourceType`, `campus`, `university`, `universitySlug`, `college`, `topic`, `gradeLevel`, `tags[]`
 - `authorName`, `authorSchool`, `attachments[]`
 
 ### answers
 - `postId`, `body`, `status`, `authorName`, `authorSchool`
 
+### comments
+- `postId`, `text`, `status`, `authorName`, `authorSchool`, `attachments[]`
+
+### universities
+- `name`, `slug`, `logoUrl`, `info`, `headerTitle`, `websiteUrl`, `locationLabel`, `latitude`, `longitude`, `colleges[]`
+
 ## Indexes
 Firestore may prompt you to create composite indexes for:
 - `posts`: status + createdAt
+- `posts`: status + universitySlug + createdAt
 - `answers`: status + createdAt
 
 ## Admin Usage
@@ -54,6 +62,7 @@ Firestore may prompt you to create composite indexes for:
 - Approve or reject posts and answers
 
 ## Public Usage
-- `/` shows approved posts only
+- `/` shows the mission + university map and university list
+- `/university/[slug]` shows approved posts for that university
 - `/ask` allows anyone to submit a question/resource
 - `/post/[id]` shows approved answers + answer form

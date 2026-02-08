@@ -1,10 +1,10 @@
-import { campuses, gradeLevels, schools, topics, resourceTypes } from "@/lib/constants";
+import { campuses, gradeLevels, topics, resourceTypes } from "@/lib/constants";
 
 
 type Filters = {
   topic: string;
   resourceType: string;
-  school: string;
+  college: string;
   campus: string;
   gradeLevel: string;
   tags: string;
@@ -15,9 +15,10 @@ interface Props {
   setFilters: (filters: Partial<Filters>) => void;
   search: string;
   setSearch: (value: string) => void;
+  colleges: string[];
 }
 
-export default function FiltersBar({ setFilters, search, setSearch, filters }: Props) {
+export default function FiltersBar({ setFilters, search, setSearch, filters, colleges }: Props) {
   const handleChange = (updates: Partial<Filters>) => {
     setFilters(updates);
   };
@@ -57,11 +58,11 @@ export default function FiltersBar({ setFilters, search, setSearch, filters }: P
         </select>
         <select
           className="select"
-          value={filters.school}
-          onChange={(e) => handleChange({ school: e.target.value })}
+          value={filters.college}
+          onChange={(e) => handleChange({ college: e.target.value })}
         >
-          <option value="">All schools</option>
-          {schools.map((s) => (
+          <option value="">All colleges</option>
+          {colleges.map((s) => (
             <option key={s} value={s}>
               {s}
             </option>

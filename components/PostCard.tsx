@@ -12,7 +12,7 @@ export default function PostCard({ post }: { post: Post }) {
       </div>
       <div style={{ marginTop: 8 }}>
         {post.topic && <span className="badge">{post.topic}</span>}
-        {post.school && <span className="badge">{post.school}</span>}
+        {post.college && <span className="badge">{post.college}</span>}
         {post.campus && <span className="badge">{post.campus}</span>}
       </div>
     </a>

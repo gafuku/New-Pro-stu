@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { campuses, gradeLevels, schools, topics } from "@/lib/constants";
+import { useEffect, useState } from "react";
+import { campuses, gradeLevels, topics } from "@/lib/constants";
 import {
   addDoc,
   collection,
@@ -15,13 +15,18 @@ import {
   auth,
 } from "@/lib/firebase";
 import { Attachment } from "@/lib/types";
+import { useUniversities } from "@/lib/useUniversities";
+import { getSelectedSchool } from "@/components/Header";
 
 export default function AskPage() {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [resourceType, setResourceType] = useState("question");
   const [campus, setCampus] = useState("");
-  const [school, setSchool] = useState("");
+  const { universities } = useUniversities();
+  const [university, setUniversity] = useState("");
+  const [universitySlug, setUniversitySlug] = useState("");
+  const [college, setCollege] = useState("");
   const [topic, setTopic] = useState("");
   const [gradeLevel, setGradeLevel] = useState("");
   const [tags, setTags] = useState("");
@@ -30,6 +35,18 @@ export default function AskPage() {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const saved = getSelectedSchool();
+    if (saved) setUniversitySlug(saved);
+  }, []);
+
+  useEffect(() => {
+    if (universitySlug) {
+      const found = universities.find((s) => (s.slug || "") === universitySlug);
+      if (found) setUniversity(found.name);
+    }
+  }, [universities, universitySlug]);
 
   const addLink = () => {
     setAttachments((prev) => [
@@ -89,7 +106,9 @@ export default function AskPage() {
       status: "pending",
       resourceType,
       campus,
-      school,
+      university,
+      universitySlug,
+      college,
       topic,
       gradeLevel,
       tags: tagList,
@@ -104,6 +123,7 @@ export default function AskPage() {
     setBody("");
     setTags("");
     setAttachments([]);
+    setCollege("");
     setStatus("Submitted for admin approval.");
   };
 
@@ -133,13 +153,32 @@ export default function AskPage() {
             </option>
           ))}
         </select>
-        <select className="select" value={school} onChange={(e) => setSchool(e.target.value)}>
-          <option value="">School</option>
-          {schools.map((s) => (
-            <option key={s} value={s}>
-              {s}
+        <select
+          className="select"
+          value={universitySlug}
+          onChange={(e) => {
+            const slug = e.target.value;
+            setUniversitySlug(slug);
+            const found = universities.find((s) => (s.slug || "") === slug);
+            setUniversity(found?.name || "");
+          }}
+        >
+          <option value="">University</option>
+          {universities.map((s) => (
+            <option key={s.id} value={s.slug || ""}>
+              {s.name}
             </option>
           ))}
+        </select>
+        <select className="select" value={college} onChange={(e) => setCollege(e.target.value)}>
+          <option value="">College / School</option>
+          {universities
+            .find((u) => (u.slug || "") === universitySlug)
+            ?.colleges?.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
         </select>
         <select className="select" value={campus} onChange={(e) => setCampus(e.target.value)}>
           <option value="">Campus</option>

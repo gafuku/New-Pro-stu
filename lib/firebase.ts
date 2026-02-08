@@ -24,6 +24,7 @@ const firebaseConfig = {
   appId: "1:28084977343:web:4010e1a6483e867d14100a",
   measurementId: "G-8HZS91VR1K"
   // apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  
   // authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
   // projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
   // storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
@@ -59,3 +60,5 @@ export {
   uploadBytes,
   getDownloadURL,
 };
+
+// firebase deploy --only firestore:indexes
