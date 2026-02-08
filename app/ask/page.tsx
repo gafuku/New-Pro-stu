@@ -2,18 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { campuses, gradeLevels, topics } from "@/lib/constants";
-import {
-  addDoc,
-  collection,
-  db,
-  serverTimestamp,
-  signInAnonymously,
-  storage,
-  ref,
-  uploadBytes,
-  getDownloadURL,
-  auth,
-} from "@/lib/firebase";
+import { supabase } from "@/lib/supabase";
+import { uploadToCloudinary } from "@/lib/cloudinary";
 import { Attachment } from "@/lib/types";
 import { useUniversities } from "@/lib/useUniversities";
 import { getSelectedSchool } from "@/components/Header";
@@ -61,20 +51,10 @@ export default function AskPage() {
     );
   };
 
-  const uploadFile = async (file: File) => {
-    if (!auth.currentUser) {
-      await signInAnonymously(auth);
-    }
-    const path = `attachments/public/${Date.now()}-${file.name}`;
-    const storageRef = ref(storage, path);
-    await uploadBytes(storageRef, file);
-    return getDownloadURL(storageRef);
-  };
-
   const handleFileUpload = async (file: File) => {
     setLoading(true);
     try {
-      const url = await uploadFile(file);
+      const url = await uploadToCloudinary(file, "attachments");
       const type = file.type.includes("pdf")
         ? "pdf"
         : file.type.startsWith("image/")
@@ -100,24 +80,28 @@ export default function AskPage() {
       .map((t) => t.trim())
       .filter(Boolean);
 
-    await addDoc(collection(db, "posts"), {
-      title,
-      body,
-      status: "pending",
-      resourceType,
-      campus,
-      university,
-      universitySlug,
-      college,
-      topic,
-      gradeLevel,
-      tags: tagList,
-      authorName: authorName || "Anonymous",
-      authorSchool: authorSchool || "",
-      attachments,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
+    const { error } = await supabase.from("posts").insert([
+      {
+        title,
+        body,
+        status: "pending",
+        resourceType,
+        campus,
+        university,
+        universitySlug,
+        college,
+        topic,
+        gradeLevel,
+        tags: tagList,
+        authorName: authorName || "Anonymous",
+        authorSchool: authorSchool || "",
+        attachments,
+      },
+    ]);
+    if (error) {
+      setStatus("Failed to submit. Try again.");
+      return;
+    }
 
     setTitle("");
     setBody("");

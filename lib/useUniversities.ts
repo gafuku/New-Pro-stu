@@ -1,30 +1,37 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { collection, db, onSnapshot, orderBy, query } from "@/lib/firebase";
+import { useCallback, useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
 import { University } from "@/lib/types";
 
 export function useUniversities() {
   const [universities, setUniversities] = useState<University[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const q = query(collection(db, "universities"), orderBy("name", "asc"));
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const next: University[] = [];
-        snap.forEach((doc) => next.push({ id: doc.id, ...(doc.data() as any) }));
-        setUniversities(next);
-        setLoading(false);
-      },
-      () => {
-        setUniversities([]);
-        setLoading(false);
-      }
-    );
-    return () => unsub();
+  const refresh = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("universities")
+      .select("*")
+      .order("name", { ascending: true });
+    if (error) {
+      setUniversities([]);
+    } else {
+      setUniversities((data || []).map((u) => ({ ...u, id: u.id })));
+    }
+    setLoading(false);
   }, []);
 
-  return { universities, loading };
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      if (!mounted) return;
+      await refresh();
+    };
+    load();
+    return () => {
+      mounted = false;
+    };
+  }, [refresh]);
+
+  return { universities, loading, refresh };
 }

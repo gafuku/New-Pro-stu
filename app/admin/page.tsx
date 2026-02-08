@@ -1,34 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  auth,
-  db,
-  collection,
-  doc,
-  onSnapshot,
-  orderBy,
-  query,
-  signInWithEmailAndPassword,
-  updateDoc,
-  where,
-  addDoc,
-  serverTimestamp,
-  storage,
-  ref,
-  uploadBytes,
-  getDownloadURL,
-} from "@/lib/firebase";
+import { supabase } from "@/lib/supabase";
+import { uploadToCloudinary } from "@/lib/cloudinary";
 import { Answer, Comment, Post, University } from "@/lib/types";
-import { onAuthStateChanged } from "firebase/auth";
-import { getDoc } from "firebase/firestore";
+import { Session } from "@supabase/supabase-js";
 import { useUniversities } from "@/lib/useUniversities";
 
 export default function AdminPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState("");
-  const [userId, setUserId] = useState<string | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [pendingPosts, setPendingPosts] = useState<Post[]>([]);
   const [pendingAnswers, setPendingAnswers] = useState<Answer[]>([]);
@@ -46,76 +29,85 @@ export default function AdminPage() {
   const [universityLon, setUniversityLon] = useState("");
   const [universityColleges, setUniversityColleges] = useState("");
   const [uploading, setUploading] = useState(false);
-  const { universities } = useUniversities();
+  const { universities, refresh } = useUniversities();
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (user) => {
-      if (!user) {
-        setUserId(null);
+    let mounted = true;
+    const init = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (!mounted) return;
+      setSession(data.session || null);
+      if (data.session?.user) {
+        const { data: userRow } = await supabase
+          .from("users")
+          .select("role")
+          .eq("id", data.session.user.id)
+          .single();
+        setIsAdmin(userRow?.role === "admin");
+      } else {
         setIsAdmin(false);
-        return;
       }
-      setUserId(user.uid);
-      const snap = await getDoc(doc(db, "users", user.uid));
-      setIsAdmin(snap.exists() && snap.data().role === "admin");
+    };
+    init();
+    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, sess) => {
+      setSession(sess);
+      if (sess?.user) {
+        const { data: userRow } = await supabase
+          .from("users")
+          .select("role")
+          .eq("id", sess.user.id)
+          .single();
+        setIsAdmin(userRow?.role === "admin");
+      } else {
+        setIsAdmin(false);
+      }
     });
-    return () => unsub();
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
     if (!isAdmin) return;
 
-    const qPosts = query(
-      collection(db, "posts"),
-      where("status", "==", "pending"),
-      orderBy("createdAt", "desc")
-    );
-    const unsubPosts = onSnapshot(qPosts, (snap) => {
-      const next: Post[] = [];
-      snap.forEach((doc) => next.push({ id: doc.id, ...(doc.data() as any) }));
-      setPendingPosts(next);
-    });
+    let mounted = true;
+    const load = async () => {
+      const { data: pendingPostsData } = await supabase
+        .from("posts")
+        .select("*")
+        .eq("status", "pending")
+        .order("createdAt", { ascending: false });
+      const { data: pendingAnswersData } = await supabase
+        .from("answers")
+        .select("*")
+        .eq("status", "pending")
+        .order("createdAt", { ascending: false });
+      const { data: pendingCommentsData } = await supabase
+        .from("comments")
+        .select("*")
+        .eq("status", "pending")
+        .order("createdAt", { ascending: false });
+      const { data: allPostsData } = await supabase
+        .from("posts")
+        .select("*")
+        .order("createdAt", { ascending: false });
 
-    const qAnswers = query(
-      collection(db, "answers"),
-      where("status", "==", "pending"),
-      orderBy("createdAt", "desc")
-    );
-    const unsubAnswers = onSnapshot(qAnswers, (snap) => {
-      const next: Answer[] = [];
-      snap.forEach((doc) => next.push({ id: doc.id, ...(doc.data() as any) }));
-      setPendingAnswers(next);
-    });
-
-    const qComments = query(
-      collection(db, "comments"),
-      where("status", "==", "pending"),
-      orderBy("createdAt", "desc")
-    );
-    const unsubComments = onSnapshot(qComments, (snap) => {
-      const next: Comment[] = [];
-      snap.forEach((doc) => next.push({ id: doc.id, ...(doc.data() as any) }));
-      setPendingComments(next);
-    });
-
-    const qAllPosts = query(collection(db, "posts"), orderBy("createdAt", "desc"));
-    const unsubAllPosts = onSnapshot(qAllPosts, (snap) => {
-      const next: Post[] = [];
-      snap.forEach((doc) => next.push({ id: doc.id, ...(doc.data() as any) }));
-      setAllPosts(next);
-    });
-
+      if (!mounted) return;
+      setPendingPosts((pendingPostsData || []) as Post[]);
+      setPendingAnswers((pendingAnswersData || []) as Answer[]);
+      setPendingComments((pendingCommentsData || []) as Comment[]);
+      setAllPosts((allPostsData || []) as Post[]);
+    };
+    load();
     return () => {
-      unsubPosts();
-      unsubAnswers();
-      unsubComments();
-      unsubAllPosts();
+      mounted = false;
     };
   }, [isAdmin]);
 
   const login = async () => {
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      await supabase.auth.signInWithPassword({ email, password });
       setStatus("");
     } catch (err: any) {
       setStatus(err.message || "Login failed");
@@ -123,28 +115,29 @@ export default function AdminPage() {
   };
 
   const setPostStatus = async (id: string, status: "approved" | "rejected") => {
-    await updateDoc(doc(db, "posts", id), { status });
+    await supabase.from("posts").update({ status }).eq("id", id);
+    setPendingPosts((prev) => prev.filter((p) => p.id !== id));
   };
 
   const setAnswerStatus = async (id: string, status: "approved" | "rejected") => {
-    await updateDoc(doc(db, "answers", id), { status });
+    await supabase.from("answers").update({ status }).eq("id", id);
+    setPendingAnswers((prev) => prev.filter((a) => a.id !== id));
   };
 
   const setCommentStatus = async (id: string, status: "approved" | "rejected") => {
-    await updateDoc(doc(db, "comments", id), { status });
+    await supabase.from("comments").update({ status }).eq("id", id);
+    setPendingComments((prev) => prev.filter((c) => c.id !== id));
   };
 
   const deletePost = async (id: string) => {
-    await updateDoc(doc(db, "posts", id), { status: "rejected" });
+    await supabase.from("posts").update({ status: "rejected" }).eq("id", id);
+    setAllPosts((prev) => prev.map((p) => (p.id === id ? { ...p, status: "rejected" } : p)));
   };
 
   const uploadLogo = async (file: File) => {
     setUploading(true);
     try {
-      const path = `universities/${Date.now()}-${file.name}`;
-      const storageRef = ref(storage, path);
-      await uploadBytes(storageRef, file);
-      const url = await getDownloadURL(storageRef);
+      const url = await uploadToCloudinary(file, "universities");
       setUniversityLogoUrl(url);
     } finally {
       setUploading(false);
@@ -159,7 +152,8 @@ export default function AdminPage() {
       .split(",")
       .map((c) => c.trim())
       .filter(Boolean);
-    await addDoc(collection(db, "universities"), {
+    await supabase.from("universities").insert([
+      {
       name: universityName.trim(),
       slug,
       info: universityInfo.trim(),
@@ -170,8 +164,9 @@ export default function AdminPage() {
       latitude: universityLat ? Number(universityLat) : null,
       longitude: universityLon ? Number(universityLon) : null,
       colleges,
-      createdAt: serverTimestamp(),
-    });
+      },
+    ]);
+    await refresh();
     setUniversityName("");
     setUniversitySlug("");
     setUniversityInfo("");
@@ -206,7 +201,7 @@ export default function AdminPage() {
       .split(",")
       .map((c) => c.trim())
       .filter(Boolean);
-    await updateDoc(doc(db, "universities", editingUni.id), {
+    await supabase.from("universities").update({
       name: universityName.trim(),
       slug,
       info: universityInfo.trim(),
@@ -217,8 +212,8 @@ export default function AdminPage() {
       latitude: universityLat ? Number(universityLat) : null,
       longitude: universityLon ? Number(universityLon) : null,
       colleges,
-      updatedAt: serverTimestamp(),
-    });
+    }).eq("id", editingUni.id);
+    await refresh();
     setEditingUni(null);
     setUniversityName("");
     setUniversitySlug("");
@@ -233,10 +228,11 @@ export default function AdminPage() {
   };
 
   const deleteUniversity = async (id: string) => {
-    await updateDoc(doc(db, "universities", id), { deletedAt: serverTimestamp() });
+    await supabase.from("universities").delete().eq("id", id);
+    await refresh();
   };
 
-  if (!userId || !isAdmin) {
+  if (!session || !isAdmin) {
     return (
       <div className="panel">
         <h2>Admin Login</h2>
@@ -258,7 +254,7 @@ export default function AdminPage() {
           Login
         </button>
         {status && <p style={{ color: "#b00020" }}>{status}</p>}
-        {!userId && <p>Only admins can access approvals.</p>}
+        {!session && <p>Only admins can access approvals.</p>}
       </div>
     );
   }

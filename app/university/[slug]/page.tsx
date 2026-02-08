@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import PostCard from "@/components/PostCard";
 import FiltersBar from "@/components/FiltersBar";
 import { Post, University } from "@/lib/types";
-import { db, collection, onSnapshot, orderBy, query, where } from "@/lib/firebase";
+import { supabase } from "@/lib/supabase";
 import { useUniversities } from "@/lib/useUniversities";
 import { setSelectedSchool } from "@/components/Header";
 
@@ -30,23 +30,21 @@ export default function UniversityPage() {
   );
 
   useEffect(() => {
-    if (slug) {
-      setSelectedSchool(slug);
-    }
-    const q = query(
-      collection(db, "posts"),
-      where("status", "==", "approved"),
-      where("universitySlug", "==", slug),
-      orderBy("createdAt", "desc")
-    );
-    const unsub = onSnapshot(q, (snap) => {
-      const next: Post[] = [];
-      snap.forEach((doc) => {
-        next.push({ id: doc.id, ...(doc.data() as any) });
-      });
-      setPosts(next);
-    });
-    return () => unsub();
+    let mounted = true;
+    const load = async () => {
+      if (slug) setSelectedSchool(slug);
+      const { data } = await supabase
+        .from("posts")
+        .select("*")
+        .eq("status", "approved")
+        .eq("universitySlug", slug)
+        .order("createdAt", { ascending: false });
+      if (mounted) setPosts((data || []) as Post[]);
+    };
+    load();
+    return () => {
+      mounted = false;
+    };
   }, [slug]);
 
   const filtered = useMemo(() => {

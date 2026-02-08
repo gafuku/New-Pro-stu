@@ -4,23 +4,8 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import AttachmentList from "@/components/AttachmentList";
 import AnswerList from "@/components/AnswerList";
-import {
-  addDoc,
-  collection,
-  db,
-  doc,
-  onSnapshot,
-  orderBy,
-  query,
-  serverTimestamp,
-  where,
-  auth,
-  signInAnonymously,
-  storage,
-  ref,
-  uploadBytes,
-  getDownloadURL,
-} from "@/lib/firebase";
+import { supabase } from "@/lib/supabase";
+import { uploadToCloudinary } from "@/lib/cloudinary";
 import { Answer, Comment, Post, Attachment } from "@/lib/types";
 
 export default function PostPage() {
@@ -39,76 +24,69 @@ export default function PostPage() {
   const [status, setStatus] = useState<string>("");
 
   useEffect(() => {
-    const unsub = onSnapshot(
-      doc(db, "posts", postId),
-      (snap) => {
-        if (snap.exists()) {
-          setPost({ id: snap.id, ...(snap.data() as any) });
-        } else {
-          setError("Post not found or not approved.");
-        }
-      },
-      () => setError("Post not found or not approved.")
-    );
+    let mounted = true;
+    const load = async () => {
+      const { data: postData, error: postErr } = await supabase
+        .from("posts")
+        .select("*")
+        .eq("id", postId)
+        .single();
+      if (!mounted) return;
+      if (postErr || !postData) {
+        setError("Post not found or not approved.");
+        return;
+      }
+      setPost(postData as Post);
 
-    const q = query(
-      collection(db, "answers"),
-      where("postId", "==", postId),
-      where("status", "==", "approved"),
-      orderBy("createdAt", "asc")
-    );
-    const unsubAnswers = onSnapshot(q, (snap) => {
-      const next: Answer[] = [];
-      snap.forEach((doc) => next.push({ id: doc.id, ...(doc.data() as any) }));
-      setAnswers(next);
-    });
+      const { data: answerData } = await supabase
+        .from("answers")
+        .select("*")
+        .eq("postId", postId)
+        .eq("status", "approved")
+        .order("createdAt", { ascending: true });
+      if (mounted) setAnswers((answerData || []) as Answer[]);
 
-    const qComments = query(
-      collection(db, "comments"),
-      where("postId", "==", postId),
-      where("status", "==", "approved"),
-      orderBy("createdAt", "asc")
-    );
-    const unsubComments = onSnapshot(qComments, (snap) => {
-      const next: Comment[] = [];
-      snap.forEach((doc) => next.push({ id: doc.id, ...(doc.data() as any) }));
-      setComments(next);
-    });
-
+      const { data: commentData } = await supabase
+        .from("comments")
+        .select("*")
+        .eq("postId", postId)
+        .eq("status", "approved")
+        .order("createdAt", { ascending: true });
+      if (mounted) setComments((commentData || []) as Comment[]);
+    };
+    load();
     return () => {
-      unsub();
-      unsubAnswers();
-      unsubComments();
+      mounted = false;
     };
   }, [postId]);
 
   const submitAnswer = async () => {
     if (!body.trim()) return;
-    await addDoc(collection(db, "answers"), {
-      postId,
-      body,
-      status: "pending",
-      authorName: name || "Anonymous",
-      authorSchool: school || "",
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
+    await supabase.from("answers").insert([
+      {
+        postId,
+        body,
+        status: "pending",
+        authorName: name || "Anonymous",
+        authorSchool: school || "",
+      },
+    ]);
     setBody("");
     setStatus("Answer submitted for admin approval.");
   };
 
   const submitComment = async () => {
     if (!commentText.trim()) return;
-    await addDoc(collection(db, "comments"), {
-      postId,
-      text: commentText,
-      status: "pending",
-      authorName: name || "Anonymous",
-      authorSchool: school || "",
-      attachments: commentAttachments,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
+    await supabase.from("comments").insert([
+      {
+        postId,
+        text: commentText,
+        status: "pending",
+        authorName: name || "Anonymous",
+        authorSchool: school || "",
+        attachments: commentAttachments,
+      },
+    ]);
     setCommentText("");
     setCommentAttachments([]);
     setStatus("Comment submitted for admin approval.");
@@ -214,13 +192,7 @@ export default function PostPage() {
             onChange={async (e) => {
               const file = e.target.files?.[0];
               if (!file) return;
-              if (!auth.currentUser) {
-                await signInAnonymously(auth);
-              }
-              const path = `attachments/public/${Date.now()}-${file.name}`;
-              const storageRef = ref(storage, path);
-              await uploadBytes(storageRef, file);
-              const url = await getDownloadURL(storageRef);
+              const url = await uploadToCloudinary(file, "comments");
               const type = file.type.includes("pdf")
                 ? "pdf"
                 : file.type.startsWith("image/")

@@ -3,8 +3,8 @@ import type { Metadata } from "next";
 import Header from "@/components/Header";
 
 export const metadata: Metadata = {
-  title: "UMich Q&A Hub",
-  description: "Questions, answers, and resources for UMich prospects.",
+  title: "College Q&A Hub",
+  description: "Questions, answers, and resources for College prospects.",
 };
 
 export default function RootLayout({
