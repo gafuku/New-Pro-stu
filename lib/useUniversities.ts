@@ -1,24 +1,22 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
 import { University } from "@/lib/types";
+import { apiGet } from "@/lib/api";
 
 export function useUniversities() {
   const [universities, setUniversities] = useState<University[]>([]);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("universities")
-      .select("*")
-      .order("name", { ascending: true });
-    if (error) {
-      setUniversities([]);
-    } else {
+    try {
+      const data = await apiGet<University[]>("/api/universities");
       setUniversities((data || []).map((u) => ({ ...u, id: u.id })));
+    } catch {
+      setUniversities([]);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, []);
 
   useEffect(() => {

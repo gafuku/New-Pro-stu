@@ -4,9 +4,9 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import AttachmentList from "@/components/AttachmentList";
 import AnswerList from "@/components/AnswerList";
-import { supabase } from "@/lib/supabase";
 import { uploadToCloudinary } from "@/lib/cloudinary";
 import { Answer, Comment, Post, Attachment } from "@/lib/types";
+import { apiGet, apiSend } from "@/lib/api";
 
 export default function PostPage() {
   const params = useParams<{ id: string }>();
@@ -26,32 +26,23 @@ export default function PostPage() {
   useEffect(() => {
     let mounted = true;
     const load = async () => {
-      const { data: postData, error: postErr } = await supabase
-        .from("posts")
-        .select("*")
-        .eq("id", postId)
-        .single();
+      const postResp = await fetch(`/api/posts/${postId}`);
+      const postData = postResp.ok ? ((await postResp.json()) as Post) : null;
       if (!mounted) return;
-      if (postErr || !postData) {
+      if (!postData) {
         setError("Post not found or not approved.");
         return;
       }
       setPost(postData as Post);
 
-      const { data: answerData } = await supabase
-        .from("answers")
-        .select("*")
-        .eq("postId", postId)
-        .eq("status", "approved")
-        .order("createdAt", { ascending: true });
+      const answerData = await apiGet<Answer[]>(
+        `/api/answers?postId=${encodeURIComponent(postId)}&status=approved`
+      );
       if (mounted) setAnswers((answerData || []) as Answer[]);
 
-      const { data: commentData } = await supabase
-        .from("comments")
-        .select("*")
-        .eq("postId", postId)
-        .eq("status", "approved")
-        .order("createdAt", { ascending: true });
+      const commentData = await apiGet<Comment[]>(
+        `/api/comments?postId=${encodeURIComponent(postId)}&status=approved`
+      );
       if (mounted) setComments((commentData || []) as Comment[]);
     };
     load();
@@ -62,31 +53,27 @@ export default function PostPage() {
 
   const submitAnswer = async () => {
     if (!body.trim()) return;
-    await supabase.from("answers").insert([
-      {
-        postId,
-        body,
-        status: "pending",
-        authorName: name || "Anonymous",
-        authorSchool: school || "",
-      },
-    ]);
+    await apiSend("/api/answers", "POST", {
+      postId,
+      body,
+      status: "pending",
+      authorName: name || "Anonymous",
+      authorSchool: school || "",
+    });
     setBody("");
     setStatus("Answer submitted for admin approval.");
   };
 
   const submitComment = async () => {
     if (!commentText.trim()) return;
-    await supabase.from("comments").insert([
-      {
-        postId,
-        text: commentText,
-        status: "pending",
-        authorName: name || "Anonymous",
-        authorSchool: school || "",
-        attachments: commentAttachments,
-      },
-    ]);
+    await apiSend("/api/comments", "POST", {
+      postId,
+      text: commentText,
+      status: "pending",
+      authorName: name || "Anonymous",
+      authorSchool: school || "",
+      attachments: commentAttachments,
+    });
     setCommentText("");
     setCommentAttachments([]);
     setStatus("Comment submitted for admin approval.");

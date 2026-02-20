@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { campuses, gradeLevels, topics } from "@/lib/constants";
-import { supabase } from "@/lib/supabase";
 import { uploadToCloudinary } from "@/lib/cloudinary";
 import { Attachment } from "@/lib/types";
 import { useUniversities } from "@/lib/useUniversities";
 import { getSelectedSchool } from "@/components/Header";
+import { apiSend } from "@/lib/api";
 
 export default function AskPage() {
   const [title, setTitle] = useState("");
@@ -80,8 +80,8 @@ export default function AskPage() {
       .map((t) => t.trim())
       .filter(Boolean);
 
-    const { error } = await supabase.from("posts").insert([
-      {
+    try {
+      await apiSend("/api/posts", "POST", {
         title,
         body,
         status: "pending",
@@ -96,9 +96,8 @@ export default function AskPage() {
         authorName: authorName || "Anonymous",
         authorSchool: authorSchool || "",
         attachments,
-      },
-    ]);
-    if (error) {
+      });
+    } catch {
       setStatus("Failed to submit. Try again.");
       return;
     }

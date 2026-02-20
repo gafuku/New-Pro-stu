@@ -1,0 +1,79 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model University {
+  id            String   @id @default(uuid()) @db.Uuid
+  name          String
+  slug          String   @unique
+  logoUrl       String?
+  info          String?
+  headerTitle   String?
+  websiteUrl    String?
+  locationLabel String?
+  latitude      Float?
+  longitude     Float?
+  colleges      String[]
+  createdAt     DateTime @default(now())
+
+  @@map("universities")
+}
+
+model Post {
+  id             String    @id @default(uuid()) @db.Uuid
+  title          String
+  body           String
+  status         String
+  resourceType   String
+  campus         String?
+  university     String?
+  universitySlug String?
+  college        String?
+  topic          String?
+  gradeLevel     String?
+  tags           String[]
+  authorName     String?
+  authorSchool   String?
+  attachments    Json?
+  createdAt      DateTime  @default(now())
+  answers        Answer[]
+  comments       Comment[]
+
+  @@index([status, createdAt(sort: Desc)])
+  @@index([status, universitySlug, createdAt(sort: Desc)])
+  @@map("posts")
+}
+
+model Answer {
+  id          String   @id @default(uuid()) @db.Uuid
+  postId      String   @db.Uuid
+  body        String
+  status      String
+  authorName  String?
+  authorSchool String?
+  createdAt   DateTime @default(now())
+  post        Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt(sort: Desc)])
+  @@map("answers")
+}
+
+model Comment {
+  id          String   @id @default(uuid()) @db.Uuid
+  postId      String   @db.Uuid
+  text        String
+  status      String
+  authorName  String?
+  authorSchool String?
+  attachments Json?
+  createdAt   DateTime @default(now())
+  post        Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt(sort: Desc)])
+  @@map("comments")
+}

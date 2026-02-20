@@ -5,9 +5,9 @@ import { useParams } from "next/navigation";
 import PostCard from "@/components/PostCard";
 import FiltersBar from "@/components/FiltersBar";
 import { Post, University } from "@/lib/types";
-import { supabase } from "@/lib/supabase";
 import { useUniversities } from "@/lib/useUniversities";
 import { setSelectedSchool } from "@/components/Header";
+import { apiGet } from "@/lib/api";
 
 export default function UniversityPage() {
   const params = useParams<{ slug: string }>();
@@ -33,12 +33,9 @@ export default function UniversityPage() {
     let mounted = true;
     const load = async () => {
       if (slug) setSelectedSchool(slug);
-      const { data } = await supabase
-        .from("posts")
-        .select("*")
-        .eq("status", "approved")
-        .eq("universitySlug", slug)
-        .order("createdAt", { ascending: false });
+      const data = await apiGet<Post[]>(
+        `/api/posts?status=approved&universitySlug=${encodeURIComponent(slug)}`
+      );
       if (mounted) setPosts((data || []) as Post[]);
     };
     load();

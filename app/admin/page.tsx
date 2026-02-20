@@ -1,18 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
 import { uploadToCloudinary } from "@/lib/cloudinary";
 import { Answer, Comment, Post, University } from "@/lib/types";
-import { Session } from "@supabase/supabase-js";
 import { useUniversities } from "@/lib/useUniversities";
+import { apiGet, apiSend } from "@/lib/api";
 
 export default function AdminPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState("");
-  const [session, setSession] = useState<Session | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [authConfigured, setAuthConfigured] = useState(true);
   const [pendingPosts, setPendingPosts] = useState<Post[]>([]);
   const [pendingAnswers, setPendingAnswers] = useState<Answer[]>([]);
   const [pendingComments, setPendingComments] = useState<Comment[]>([]);
@@ -31,106 +30,76 @@ export default function AdminPage() {
   const [uploading, setUploading] = useState(false);
   const { universities, refresh } = useUniversities();
 
+  const loadModerationData = async () => {
+    const [pendingPostsData, pendingAnswersData, pendingCommentsData, allPostsData] = await Promise.all([
+      apiGet<Post[]>("/api/posts?status=pending"),
+      apiGet<Answer[]>("/api/answers?status=pending"),
+      apiGet<Comment[]>("/api/comments?status=pending"),
+      apiGet<Post[]>("/api/posts"),
+    ]);
+
+    setPendingPosts(pendingPostsData || []);
+    setPendingAnswers(pendingAnswersData || []);
+    setPendingComments(pendingCommentsData || []);
+    setAllPosts(allPostsData || []);
+  };
+
   useEffect(() => {
     let mounted = true;
     const init = async () => {
-      const { data } = await supabase.auth.getSession();
+      const sessionData = await apiGet<{ isAdmin: boolean; configured: boolean }>("/api/admin/session");
       if (!mounted) return;
-      setSession(data.session || null);
-      if (data.session?.user) {
-        const { data: userRow } = await supabase
-          .from("users")
-          .select("role")
-          .eq("id", data.session.user.id)
-          .single();
-        setIsAdmin(userRow?.role === "admin");
-      } else {
-        setIsAdmin(false);
+      setIsAdmin(sessionData.isAdmin);
+      setAuthConfigured(sessionData.configured);
+      if (sessionData.isAdmin) {
+        await loadModerationData();
       }
     };
-    init();
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, sess) => {
-      setSession(sess);
-      if (sess?.user) {
-        const { data: userRow } = await supabase
-          .from("users")
-          .select("role")
-          .eq("id", sess.user.id)
-          .single();
-        setIsAdmin(userRow?.role === "admin");
-      } else {
-        setIsAdmin(false);
-      }
+
+    init().catch(() => {
+      if (!mounted) return;
+      setIsAdmin(false);
     });
+
     return () => {
       mounted = false;
-      sub.subscription.unsubscribe();
     };
   }, []);
 
-  useEffect(() => {
-    if (!isAdmin) return;
-
-    let mounted = true;
-    const load = async () => {
-      const { data: pendingPostsData } = await supabase
-        .from("posts")
-        .select("*")
-        .eq("status", "pending")
-        .order("createdAt", { ascending: false });
-      const { data: pendingAnswersData } = await supabase
-        .from("answers")
-        .select("*")
-        .eq("status", "pending")
-        .order("createdAt", { ascending: false });
-      const { data: pendingCommentsData } = await supabase
-        .from("comments")
-        .select("*")
-        .eq("status", "pending")
-        .order("createdAt", { ascending: false });
-      const { data: allPostsData } = await supabase
-        .from("posts")
-        .select("*")
-        .order("createdAt", { ascending: false });
-
-      if (!mounted) return;
-      setPendingPosts((pendingPostsData || []) as Post[]);
-      setPendingAnswers((pendingAnswersData || []) as Answer[]);
-      setPendingComments((pendingCommentsData || []) as Comment[]);
-      setAllPosts((allPostsData || []) as Post[]);
-    };
-    load();
-    return () => {
-      mounted = false;
-    };
-  }, [isAdmin]);
-
   const login = async () => {
     try {
-      await supabase.auth.signInWithPassword({ email, password });
+      await apiSend("/api/admin/login", "POST", { email, password });
+      setIsAdmin(true);
       setStatus("");
-    } catch (err: any) {
-      setStatus(err.message || "Login failed");
+      await loadModerationData();
+    } catch {
+      setStatus("Login failed");
+      setIsAdmin(false);
     }
   };
 
+  const logout = async () => {
+    await apiSend("/api/admin/logout", "POST");
+    setIsAdmin(false);
+  };
+
   const setPostStatus = async (id: string, status: "approved" | "rejected") => {
-    await supabase.from("posts").update({ status }).eq("id", id);
+    await apiSend(`/api/posts/${id}`, "PATCH", { status });
     setPendingPosts((prev) => prev.filter((p) => p.id !== id));
   };
 
   const setAnswerStatus = async (id: string, status: "approved" | "rejected") => {
-    await supabase.from("answers").update({ status }).eq("id", id);
+    await apiSend(`/api/answers/${id}`, "PATCH", { status });
     setPendingAnswers((prev) => prev.filter((a) => a.id !== id));
   };
 
   const setCommentStatus = async (id: string, status: "approved" | "rejected") => {
-    await supabase.from("comments").update({ status }).eq("id", id);
+    await apiSend(`/api/comments/${id}`, "PATCH", { status });
     setPendingComments((prev) => prev.filter((c) => c.id !== id));
   };
 
   const deletePost = async (id: string) => {
-    await supabase.from("posts").update({ status: "rejected" }).eq("id", id);
+    await apiSend(`/api/posts/${id}`, "PATCH", { status: "rejected" });
     setAllPosts((prev) => prev.map((p) => (p.id === id ? { ...p, status: "rejected" } : p)));
   };
 
@@ -146,14 +115,12 @@ export default function AdminPage() {
 
   const createUniversity = async () => {
     if (!universityName.trim()) return;
-    const slug =
-      universitySlug.trim() || universityName.trim().toLowerCase().replace(/\s+/g, "-");
+    const slug = universitySlug.trim() || universityName.trim().toLowerCase().replace(/\s+/g, "-");
     const colleges = universityColleges
       .split(",")
       .map((c) => c.trim())
       .filter(Boolean);
-    await supabase.from("universities").insert([
-      {
+    await apiSend("/api/universities", "POST", {
       name: universityName.trim(),
       slug,
       info: universityInfo.trim(),
@@ -164,8 +131,7 @@ export default function AdminPage() {
       latitude: universityLat ? Number(universityLat) : null,
       longitude: universityLon ? Number(universityLon) : null,
       colleges,
-      },
-    ]);
+    });
     await refresh();
     setUniversityName("");
     setUniversitySlug("");
@@ -195,13 +161,12 @@ export default function AdminPage() {
 
   const updateUniversity = async () => {
     if (!editingUni) return;
-    const slug =
-      universitySlug.trim() || universityName.trim().toLowerCase().replace(/\s+/g, "-");
+    const slug = universitySlug.trim() || universityName.trim().toLowerCase().replace(/\s+/g, "-");
     const colleges = universityColleges
       .split(",")
       .map((c) => c.trim())
       .filter(Boolean);
-    await supabase.from("universities").update({
+    await apiSend(`/api/universities/${editingUni.id}`, "PATCH", {
       name: universityName.trim(),
       slug,
       info: universityInfo.trim(),
@@ -212,7 +177,7 @@ export default function AdminPage() {
       latitude: universityLat ? Number(universityLat) : null,
       longitude: universityLon ? Number(universityLon) : null,
       colleges,
-    }).eq("id", editingUni.id);
+    });
     await refresh();
     setEditingUni(null);
     setUniversityName("");
@@ -228,11 +193,11 @@ export default function AdminPage() {
   };
 
   const deleteUniversity = async (id: string) => {
-    await supabase.from("universities").delete().eq("id", id);
+    await apiSend(`/api/universities/${id}`, "DELETE");
     await refresh();
   };
 
-  if (!session || !isAdmin) {
+  if (!isAdmin) {
     return (
       <div className="panel">
         <h2>Admin Login</h2>
@@ -254,7 +219,9 @@ export default function AdminPage() {
           Login
         </button>
         {status && <p style={{ color: "#b00020" }}>{status}</p>}
-        {!session && <p>Only admins can access approvals.</p>}
+        {!authConfigured && (
+          <p style={{ color: "#b00020" }}>Set ADMIN_EMAIL, ADMIN_PASSWORD and ADMIN_SESSION_TOKEN in env.</p>
+        )}
       </div>
     );
   }
@@ -263,9 +230,10 @@ export default function AdminPage() {
     <div className="panel">
       <h2>Admin Moderation</h2>
       <p>
-        {pendingPosts.length} pending posts · {pendingAnswers.length} pending answers ·{" "}
+        {pendingPosts.length} pending posts · {pendingAnswers.length} pending answers · {" "}
         {pendingComments.length} pending comments
       </p>
+      <button className="button secondary" onClick={logout}>Logout</button>
 
       <h3>Universities</h3>
       <div className="card" style={{ marginBottom: 16 }}>
